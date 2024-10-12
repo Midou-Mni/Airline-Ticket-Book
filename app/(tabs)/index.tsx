@@ -1,14 +1,18 @@
 import Header from "@/components/header";
+import { apiBaseUrl, apiToken } from "@/utils/api";
 import {
   FontAwesome,
   FontAwesome5,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
-import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   Text,
@@ -19,6 +23,7 @@ import {
   ArrowPathIcon,
   ChevronDoubleRightIcon,
 } from "react-native-heroicons/outline";
+import { defineAnimation } from "react-native-reanimated";
 
 // Components
 // ==============================================================
@@ -164,16 +169,17 @@ const DepartureDate: React.FC<DepartureDateProps> = ({
   </Pressable>
 );
 
-
 export default function HomeScreen() {
   const [isPending, setPending] = useState(false);
+  const [refreshData, setRefreshData] = useState(false);
   const [pageNavigation, setPageNavigation] = useState("One-Way");
+  const [session, setSession] = useState<any>(null);
   const [flightOfferData, setFlightOfferData] = useState<FlightOfferData>({
     originLocationCode: "",
     destinationLocationCode: "",
     departureDate: new Date(),
     returnDate: new Date(),
-    adults: 0,
+    adults: 1,
     maxResults: 10,
   });
 
@@ -181,7 +187,7 @@ export default function HomeScreen() {
     originCity: "",
     destinationCity: "",
     departureDate: "",
-    seat: 0,
+    seat: 1,
   });
   const [selectedDate, setSelectedDate] = useState<any>(new Date());
 
@@ -189,6 +195,136 @@ export default function HomeScreen() {
     setPageNavigation(type);
   };
 
+  //! fix date
+  useEffect(() => {
+    const loadSelectedDestination = async () => {
+      try {
+        const departureCities = await AsyncStorage.getItem("departureCities");
+        const destinationCities = await AsyncStorage.getItem(
+          "destinationCities"
+        );
+
+        const departureDate = await AsyncStorage.getItem("departureDate");
+
+        if (departureCities !== null) {
+          const departureCitiesArray = JSON.parse(departureCities);
+          const lastAddedItem =
+            departureCitiesArray[departureCitiesArray.length - 1];
+          setSearchFlightData((prev) => ({
+            ...prev,
+            originCity: lastAddedItem.city,
+          }));
+          setFlightOfferData((prev) => ({
+            ...prev,
+            originLocationCode: lastAddedItem.iataCode,
+          }));
+        }
+
+        if (destinationCities !== null) {
+          const destinationCitiesArray = JSON.parse(destinationCities);
+          const lastAddedItem =
+            destinationCitiesArray[destinationCitiesArray.length - 1];
+          setSearchFlightData((prev) => ({
+            ...prev,
+            destinationCity: lastAddedItem.city,
+          }));
+          setFlightOfferData((prev) => ({
+            ...prev,
+            destinationLocationCode: lastAddedItem.iataCode,
+          }));
+        }
+
+        if (departureDate !== null) {
+          setSelectedDate(departureDate);
+          setSearchFlightData((prev) => ({
+            ...prev,
+            departureDate: departureDate,
+          }));
+
+          const date = new Date(departureDate);
+          setFlightOfferData((prev) => ({
+            ...prev,
+            departureDate: departureDate,
+          }));
+        }
+      } catch (error) {
+        console.log("error in loadSelectedDestination", error);
+      }
+    };
+    loadSelectedDestination();
+
+    setRefreshData(false);
+  }, [refreshData]);
+
+  const handleBackFormPreviousScreen = () => {
+    setRefreshData(true);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      handleBackFormPreviousScreen();
+    }, [session])
+  );
+
+  const constructSearchUrl = () => {
+    const {
+      originLocationCode,
+      destinationLocationCode,
+      departureDate,
+      adults,
+      maxResults,
+    } = flightOfferData;
+
+    const formattedDepartureDate = departureDate.replace(/"/g, "");
+    if (
+      !originLocationCode ||
+      !destinationLocationCode ||
+      !formattedDepartureDate ||
+      !adults
+    ) {
+      Alert.alert("Error", "Please fill all the required fields");
+    }
+
+    return `${apiBaseUrl}?originLocationCode=${originLocationCode}&destinationLocationCode=${destinationLocationCode}&departureDate=${formattedDepartureDate}&adults=${adults}&max=${maxResults}`;
+  };
+
+  const handleParentSearch = async () => {
+    const searchUrl = constructSearchUrl();
+    setPending(true);
+    try {
+      const response = await axios.get(searchUrl, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+
+      if (response.data) {
+        setPending(false);
+        await AsyncStorage.setItem(
+          "searchFlightData",
+          JSON.stringify(searchFlightData)
+        );
+
+        console.log("Flight tickets data: ", response.data);
+        router.push({
+          pathname: "/searchResult",
+          params: {
+            flightOfferData: JSON.stringify(response.data),
+          },
+        });
+      }
+    } catch (error) {
+      console.log("Error fetvhing flight offers -in handleParentSearch", error);
+      setPending(false);
+      if (error.response && error.response.status === 401) {
+        Alert.alert("API Key Expired", "Please refresh your access token", [
+          { text: "Ok" },
+        ]);
+      } else {
+        Alert.alert("Error", "An error occurred while fetching flight offers", [
+          { text: "Ok" },
+        ]);
+      }
+    }
+  };
   return (
     <ScrollView>
       <View className="flex-1 items-center bg-[#F5F7FA]">
@@ -254,7 +390,7 @@ export default function HomeScreen() {
                   />
                 }
                 value={searchFlightData.destinationCity}
-                onPress={() => {}}
+                onPress={() => router.push("/destination")}
               />
             </View>
 
@@ -268,7 +404,7 @@ export default function HomeScreen() {
                 }
                 icon={<FontAwesome name="calendar" size={20} color="#808080" />}
                 value={searchFlightData.departureDate.replace(/^"|"$/g, "")}
-                onPress={() => {}}
+                onPress={() => router.push("/departuredate")}
               />
             </View>
 
@@ -307,7 +443,7 @@ export default function HomeScreen() {
             <View className="w-full px-4 py-2 justify-start">
               <Pressable
                 className="bg-[#12B3A8] rounded-lg justify-center items-center py-3"
-                onPress={() => {}}
+                onPress={handleParentSearch}
               >
                 <Text className="text-white font-bold text-lg">Search</Text>
               </Pressable>
