@@ -38,6 +38,9 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
         <Stack.Screen name="departure" />
+        <Stack.Screen name="destination" />
+        <Stack.Screen name="departuredate" />
+        <Stack.Screen name="searchResult" />
       </Stack>
     </ThemeProvider>
   );
