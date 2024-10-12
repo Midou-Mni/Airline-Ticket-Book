@@ -199,7 +199,6 @@ const DepartureScreen = () => {
           </View>
         </View>
       </View>
-      <Text className="text-3xl font-bold text-red-600">Departure</Text>
     </View>
   );
 };
